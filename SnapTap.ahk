@@ -1,145 +1,218 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 Persistent
-
-enabled := true
-appTitle := "Snap Tap"
-
-; ---------- GUI ----------
-myGui := Gui("+AlwaysOnTop -MaximizeBox -MinimizeBox", appTitle)
+; ============================================================
+; SETTINGS
+; ============================================================
+settingsFile := A_ScriptDir "\SnapTap.ini"
+startupShortcut := A_Startup "\SnapTap.lnk"
+snapTapEnabled := true
+runInBackground := IniRead(settingsFile, "Settings", "RunInBackground", "0") = "1"
+; ============================================================
+; GUI
+; ============================================================
+myGui := Gui("-MaximizeBox -MinimizeBox", "SnapTap")
 myGui.BackColor := "151515"
-myGui.SetFont("s14 Bold", "Segoe UI")
-title := myGui.AddText("x20 y18 w300 Center cFFFFFF", "SNAP TAP")
-
-myGui.SetFont("s20 Bold", "Segoe UI")
-status := myGui.AddText("x20 y55 w300 h45 Center", "ON")
-status.SetFont("c55FF77")
-
-myGui.SetFont("s9", "Segoe UI")
-info := myGui.AddText("x20 y105 w300 h45 Center cAAAAAA", "F8 = Toggle`nClose this window to disable Snap Tap")
-
-toggleBtn := myGui.AddButton("x85 y165 w170 h35", "Toggle (F8)")
-toggleBtn.OnEvent("Click", Toggle)
-
-myGui.OnEvent("Close", (*) => ExitApp())
-myGui.Show("w340 h225")
-
-; ---------- Hotkeys ----------
-F8::Toggle()
-
-Toggle(*) {
-    global enabled, status
-    enabled := !enabled
-
-    if enabled {
+myGui.SetFont("s18 Bold", "Segoe UI")
+myGui.AddText(
+    "x20 y15 w300 h35 Center cFFFFFF",
+    "SNAP TAP"
+)
+myGui.SetFont("s10", "Segoe UI")
+myGui.AddText(
+    "x20 y55 w300 h25 Center c888888",
+    "A/D + W/S Snap Tap"
+)
+status := myGui.AddText(
+    "x20 y90 w300 h35 Center",
+    "ON"
+)
+status.SetFont("s20 Bold c55FF77")
+toggleButton := myGui.AddButton(
+    "x90 y140 w160 h40",
+    "Disable"
+)
+toggleButton.OnEvent(
+    "Click",
+    ToggleSnapTap
+)
+myGui.AddText(
+    "x20 y195 w300 h40 Center c666666",
+    "Use the button above or press F7 to toggle Snap Tap."
+)
+startupCheckbox := myGui.AddCheckbox(
+    "x20 y245 w300 h25 cCCCCCC",
+    "Run on Startup"
+)
+startupCheckbox.Value := FileExist(startupShortcut) ? 1 : 0
+startupCheckbox.OnEvent(
+    "Click",
+    ToggleStartup
+)
+backgroundCheckbox := myGui.AddCheckbox(
+    "x20 y275 w300 h25 cCCCCCC",
+    "Run in Background"
+)
+backgroundCheckbox.Value := runInBackground ? 1 : 0
+backgroundCheckbox.OnEvent(
+    "Click",
+    ToggleRunInBackground
+)
+myGui.OnEvent(
+    "Close",
+    GuiClose
+)
+if !runInBackground {
+    myGui.Show(
+        "w340 h320"
+    )
+}
+; ============================================================
+; TRAY
+; ============================================================
+A_TrayMenu.Add()
+A_TrayMenu.Add(
+    "Show SnapTap",
+    ShowMainGui
+)
+A_TrayMenu.Default := "Show SnapTap"
+ShowMainGui(*) {
+    global myGui
+    myGui.Show(
+        "w340 h320"
+    )
+}
+; ============================================================
+; TOGGLE
+; ============================================================
+ToggleSnapTap(*) {
+    global snapTapEnabled
+    global status
+    global toggleButton
+    snapTapEnabled := !snapTapEnabled
+    if snapTapEnabled {
         status.Text := "ON"
-        status.SetFont("c55FF77")
+        status.SetFont("s20 Bold c55FF77")
+        toggleButton.Text := "Disable"
     } else {
         status.Text := "OFF"
-        status.SetFont("cFF5555")
+        status.SetFont("s20 Bold cFF5555")
+        toggleButton.Text := "Enable"
         ReleaseKeys()
     }
 }
-
-ReleaseKeys() {
-    Send "{a up}{d up}{w up}{s up}"
+F7::ToggleSnapTap()
+; ============================================================
+; RUN ON STARTUP
+; ============================================================
+ToggleStartup(ctrl, *) {
+    global startupShortcut
+    if ctrl.Value {
+        try {
+            FileCreateShortcut(A_ScriptFullPath, startupShortcut, A_ScriptDir)
+        } catch {
+            ctrl.Value := 0
+            MsgBox("Couldn't create the startup shortcut.", "SnapTap")
+        }
+    } else {
+        try FileDelete(startupShortcut)
+    }
 }
-
-; ---------- Snap Tap ----------
+; ============================================================
+; RUN IN BACKGROUND
+; ============================================================
+ToggleRunInBackground(ctrl, *) {
+    global runInBackground
+    global settingsFile
+    runInBackground := ctrl.Value ? true : false
+    try IniWrite(runInBackground ? "1" : "0", settingsFile, "Settings", "RunInBackground")
+}
+GuiClose(*) {
+    global runInBackground
+    global myGui
+    if runInBackground {
+        myGui.Hide()
+    } else {
+        ExitApp()
+    }
+}
+; ============================================================
+; A / D
+; ============================================================
 $a:: {
-    global enabled
-    if !enabled {
-        Send "{a down}"
-        KeyWait "a"
-        Send "{a up}"
-        return
-    }
-
+    global snapTapEnabled
     Send "{a down}"
-    while GetKeyState("a", "P") {
-        if GetKeyState("d", "P") {
-            Send "{a up}{d down}"
-            while GetKeyState("d", "P")
-                Sleep 1
+    if snapTapEnabled {
+        if GetKeyState("d", "P")
             Send "{d up}"
-            if GetKeyState("a", "P")
-                Send "{a down}"
-        }
-        Sleep 1
     }
+}
+$a up:: {
+    global snapTapEnabled
     Send "{a up}"
+    if snapTapEnabled {
+        if GetKeyState("d", "P")
+            Send "{d down}"
+    }
 }
-
 $d:: {
-    global enabled
-    if !enabled {
-        Send "{d down}"
-        KeyWait "d"
-        Send "{d up}"
-        return
-    }
-
+    global snapTapEnabled
     Send "{d down}"
-    while GetKeyState("d", "P") {
-        if GetKeyState("a", "P") {
-            Send "{d up}{a down}"
-            while GetKeyState("a", "P")
-                Sleep 1
+    if snapTapEnabled {
+        if GetKeyState("a", "P")
             Send "{a up}"
-            if GetKeyState("d", "P")
-                Send "{d down}"
-        }
-        Sleep 1
     }
+}
+$d up:: {
+    global snapTapEnabled
     Send "{d up}"
+    if snapTapEnabled {
+        if GetKeyState("a", "P")
+            Send "{a down}"
+    }
 }
-
+; ============================================================
+; W / S
+; ============================================================
 $w:: {
-    global enabled
-    if !enabled {
-        Send "{w down}"
-        KeyWait "w"
-        Send "{w up}"
-        return
-    }
-
+    global snapTapEnabled
     Send "{w down}"
-    while GetKeyState("w", "P") {
-        if GetKeyState("s", "P") {
-            Send "{w up}{s down}"
-            while GetKeyState("s", "P")
-                Sleep 1
+    if snapTapEnabled {
+        if GetKeyState("s", "P")
             Send "{s up}"
-            if GetKeyState("w", "P")
-                Send "{w down}"
-        }
-        Sleep 1
     }
-    Send "{w up}"
 }
-
+$w up:: {
+    global snapTapEnabled
+    Send "{w up}"
+    if snapTapEnabled {
+        if GetKeyState("s", "P")
+            Send "{s down}"
+    }
+}
 $s:: {
-    global enabled
-    if !enabled {
-        Send "{s down}"
-        KeyWait "s"
-        Send "{s up}"
-        return
-    }
-
+    global snapTapEnabled
     Send "{s down}"
-    while GetKeyState("s", "P") {
-        if GetKeyState("w", "P") {
-            Send "{s up}{w down}"
-            while GetKeyState("w", "P")
-                Sleep 1
+    if snapTapEnabled {
+        if GetKeyState("w", "P")
             Send "{w up}"
-            if GetKeyState("s", "P")
-                Send "{s down}"
-        }
-        Sleep 1
     }
+}
+$s up:: {
+    global snapTapEnabled
+    Send "{s up}"
+    if snapTapEnabled {
+        if GetKeyState("w", "P")
+            Send "{w down}"
+    }
+}
+; ============================================================
+; CLEANUP
+; ============================================================
+ReleaseKeys() {
+    Send "{a up}"
+    Send "{d up}"
+    Send "{w up}"
     Send "{s up}"
 }
-
 OnExit((*) => ReleaseKeys())
